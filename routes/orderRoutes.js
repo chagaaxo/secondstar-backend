@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../firebase'); 
+const { db, admin } = require('../firebase');
 
 // Get all orders
 router.get('/', async (req, res) => {
@@ -56,22 +56,29 @@ router.get('/:orderId', async (req, res) => {
   }
 });
 
-router.post('/orders/mark-sold', async (req, res) => {
+router.post('/mark-sold', async (req, res) => {
   try {
     const { orderId, items } = req.body;
-    
-    // Update each product's stock
-    await Promise.all(items.map(async item => {
-      await Product.findByIdAndUpdate(item.productId, { 
-        $inc: { stock: -item.quantity },
-        $set: { lastSold: new Date() }
+
+    await Promise.all(items.map(async (item) => {
+      if (!item.id) {
+        throw new Error(`Missing product ID for item: ${JSON.stringify(item)}`);
+      }
+      const productRef = db.collection('products').doc(item.id);
+
+      await productRef.update({
+        stock: admin.firestore.FieldValue.increment(-item.quantity),
+        lastSold: new Date()
       });
     }));
-    
+
     res.status(200).json({ success: true });
   } catch (error) {
+    console.error('Error marking products as sold:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
+
 
 module.exports = router;
